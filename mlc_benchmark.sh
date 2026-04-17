@@ -18,6 +18,16 @@ die()  { echo -e "\n\033[1;31mERROR:\033[0m $*" >&2; exit 1; }
 hdr()  { echo -e "\n${CYAN}━━━  $*  ━━━${RESET}"; }
 row()  { printf "  %-30s %s\n" "$1" "$2"; }
 
+# Convert "NNN MB/s" → "X.X GB/s" when NNN >= 100000, else leave unchanged
+fmt_bw() {
+    awk '{
+        if ($1 ~ /^[0-9]+$/ && $1+0 >= 100000)
+            printf "%.1f GB/s", $1/1000
+        else
+            print
+    }' <<< "$1"
+}
+
 require() {
     for cmd in "$@"; do
         command -v "$cmd" &>/dev/null || die "'$cmd' is required but not installed."
@@ -61,8 +71,8 @@ show_cpu_info() {
     # Cache sizes from /proc/cpuinfo
     local l1d l1i l2 l3
     l1d=$(grep -m1 "cache size" /proc/cpuinfo | awk '{print $4, $5}')
-    l2=$(lscpu 2>/dev/null | awk '/^L2 cache/{print $3}' || echo "?")
-    l3=$(lscpu 2>/dev/null | awk '/^L3 cache/{print $3}' || echo "?")
+    l2=$(lscpu 2>/dev/null | awk '/^L2 cache/{$1=$2=""; gsub(/^[[:space:]]*/,""); print; exit}' || echo "?")
+    l3=$(lscpu 2>/dev/null | awk '/^L3 cache/{$1=$2=""; gsub(/^[[:space:]]*/,""); print; exit}' || echo "?")
     row "L2 Cache"           "${l2}"
     row "L3 Cache"           "${l3}"
 
@@ -74,6 +84,53 @@ show_cpu_info() {
     row "Memory Total"       "$mem_total"
     row "Memory Type"        "$mem_type"
     row "Memory Speed"       "$mem_speed"
+}
+
+# ── system information ───────────────────────────────────────
+show_system_info() {
+    hdr "System Information"
+
+    # OS / Kernel
+    local os_name kernel hostname_str
+    os_name=$(. /etc/os-release 2>/dev/null && echo "$PRETTY_NAME" || uname -o)
+    kernel=$(uname -r)
+    hostname_str=$(hostname 2>/dev/null || echo "N/A")
+    row "Hostname"            "$hostname_str"
+    row "OS"                  "$os_name"
+    row "Kernel"              "$kernel"
+
+    # Architecture / Virtualization
+    local arch virt
+    arch=$(uname -m)
+    virt=$(systemd-detect-virt 2>/dev/null || \
+           { grep -qi "hypervisor" /proc/cpuinfo && echo "hypervisor" || echo "none"; })
+    row "Architecture"        "$arch"
+    row "Virtualization"      "$virt"
+
+    # Uptime
+    local uptime_str
+    uptime_str=$(uptime -p 2>/dev/null || uptime)
+    row "Uptime"              "$uptime_str"
+
+    # NUMA topology
+    local numa_nodes
+    numa_nodes=$(numactl --hardware 2>/dev/null | awk '/available:/{print $2}' || echo "N/A")
+    row "NUMA Nodes"          "$numa_nodes"
+
+    # Disk (root fs)
+    local disk_info
+    disk_info=$(df -h / 2>/dev/null | awk 'NR==2{printf "%s total, %s used, %s avail", $2,$3,$4}' || echo "N/A")
+    row "Root Disk"           "$disk_info"
+
+    # Network interfaces (non-loopback)
+    local ifaces
+    ifaces=$(ip -o link show 2>/dev/null | awk -F': ' '!/loopback/{gsub(/@.*/,"",$2); printf "%s ", $2}' | sed 's/ $//' || echo "N/A")
+    row "Network Interfaces"  "$ifaces"
+
+    # Scaling governor
+    local governor
+    governor=$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor 2>/dev/null || echo "N/A")
+    row "CPU Freq Governor"   "$governor"
 }
 
 # ── download + extract MLC ──────────────────────────────────
@@ -100,7 +157,7 @@ setup_mlc() {
 
 # ── bandwidth tests ─────────────────────────────────────────
 run_bandwidth() {
-    hdr "Memory & Cache Bandwidth (like AIDA64)"
+    hdr "Memory & Cache Bandwidth"
     echo -e "  ${BOLD}$(printf '%-32s %12s %12s %12s' 'Level' 'Read' 'Write' 'Copy')${RESET}"
     echo    "  $(printf '%0.s─' {1..70})"
 
@@ -110,27 +167,28 @@ run_bandwidth() {
     bw_out=$("$MLC_BIN" --peak_injection_bandwidth 2>/dev/null || true)
 
     # Peak memory BW (all-read, all-write, 1:1 r+w streams simulate Copy/Triad)
+    # MLC v3.12 output lines: "ALL Reads", "All NT writes", "Stream-triad like"
     local mem_read mem_write mem_copy
-    mem_read=$(  echo "$bw_out" | awk '/ALL Reads/{printf "%.0f MB/s", $NF*1}' 2>/dev/null || echo "N/A")
-    mem_write=$( echo "$bw_out" | awk '/ALL Writes/{printf "%.0f MB/s", $NF*1}' 2>/dev/null || echo "N/A")
-    mem_copy=$(  echo "$bw_out" | awk '/2:1 Reads-Writes/{printf "%.0f MB/s", $NF*1}' 2>/dev/null || echo "N/A")
+    mem_read=$(  echo "$bw_out" | awk '/ALL Reads/{printf "%.0f MB/s", $NF}' 2>/dev/null || echo "N/A")
+    mem_write=$( echo "$bw_out" | awk '/All NT writes/{printf "%.0f MB/s", $NF}' 2>/dev/null || echo "N/A")
+    mem_copy=$(  echo "$bw_out" | awk '/Stream-triad like/{printf "%.0f MB/s", $NF}' 2>/dev/null || echo "N/A")
 
-    printf "  %-32s %12s %12s %12s\n" "Memory (DRAM)"  "$mem_read" "$mem_write" "$mem_copy"
+    printf "  %-32s %12s %12s %12s\n" "Memory (DRAM)"  "$(fmt_bw "$mem_read")" "$(fmt_bw "$mem_write")" "$(fmt_bw "$mem_copy")"
 
-    # Cache BW via --loaded_latency with buffer sizes
-    # L1 ≈ 16 KB, L2 ≈ 256 KB, L3 ≈ 8 MB (auto-detect)
-    local l1_size l2_size l3_size
-    l1_size=$(lscpu 2>/dev/null | awk '/^L1d cache/{gsub(/[^0-9]/,"",$3); print $3+0}' || echo 32)
-    l2_size=$(lscpu 2>/dev/null | awk '/^L2 cache/{gsub(/[^0-9KkMm]/,"",$3); v=$3; if(v~/[Mm]/)v=v*1024; print v+0}' || echo 256)
-    l3_size=$(lscpu 2>/dev/null | awk '/^L3 cache/{gsub(/[^0-9KkMm]/,"",$3); v=$3; if(v~/[Mm]/)v=v*1024; print v+0}' || echo 8192)
+    # Cache BW: use fixed per-thread buffer sizes that stay within each cache level.
+    # L1: 16K  (L1d ≥ 32KB), L2: 512K (L2 ≥ 1MB per core), L3: detected_l3/4
+    local l3_kb
+    l3_kb=$(lscpu 2>/dev/null | awk '/^L3 cache/{v=$3; u=$4;
+        if(u~/[Gg]/) v=v*1024*1024; else if(u~/[Mm]/) v=v*1024; print int(v)}' || echo 8192)
+    [[ "$l3_kb" -gt 0 ]] 2>/dev/null || l3_kb=8192
 
-    for level_label in "L1 Cache:$((l1_size/2))K" "L2 Cache:$((l2_size/2))K" "L3 Cache:$((l3_size*3/4))K"; do
+    for level_label in "L1 Cache:16K" "L2 Cache:512K" "L3 Cache:$((l3_kb/4))K"; do
         local label buf_k bw_r
         label="${level_label%%:*}"
         buf_k="${level_label##*:}"
         bw_r=$("$MLC_BIN" --peak_injection_bandwidth -b"${buf_k}" 2>/dev/null \
                | awk '/ALL Reads/{printf "%.0f MB/s", $NF}' || echo "N/A")
-        printf "  %-32s %12s %12s %12s\n" "$label"  "$bw_r" "N/A" "N/A"
+        printf "  %-32s %12s %12s %12s\n" "$label"  "$(fmt_bw "$bw_r")" "N/A" "N/A"
     done
 }
 
@@ -140,27 +198,24 @@ run_latency() {
     echo -e "  ${BOLD}$(printf '%-32s %12s' 'Level' 'Latency')${RESET}"
     echo    "  $(printf '%0.s─' {1..46})"
 
-    # --idle_latency gives loaded latency sweep across buffer sizes
-    # We run a quick idle latency sweep with --idle_latency
-    local lat_out
-    lat_out=$("$MLC_BIN" --idle_latency 2>/dev/null || true)
+    # Run --idle_latency with a specific buffer size (-b) so data fits in target cache.
+    # Output is a NUMA latency matrix; extract the local-node value (first numeric row).
+    # Falls back to parsing "Each iteration took X clocks ( Y ns)" format.
+    mlc_lat() {
+        "$MLC_BIN" --idle_latency -b"$1" 2>/dev/null \
+            | awk 'NF==2 && $1~/^[[:space:]]*[0-9]/ && $2+0>0 {printf "%.1f ns", $2; exit}
+                  /ns\)/{match($0,/[0-9]+\.[0-9]+[[:space:]]*ns/); if(RSTART){print substr($0,RSTART,RLENGTH); exit}}'
+    }
 
-    # Parse the table: columns are "Size(KB)  Latency(ns)"
-    # Find the last line before DRAM plateau for L3, then step back for L2/L1
-    local l1_lat l2_lat l3_lat mem_lat
-    l1_lat=$( echo "$lat_out" | awk 'NR>3 && $1+0 <= 32          {last=$2} END{print last" ns"}' 2>/dev/null || echo "N/A")
-    l2_lat=$( echo "$lat_out" | awk 'NR>3 && $1+0 > 32  && $1+0 <= 512   {last=$2} END{print last" ns"}' 2>/dev/null || echo "N/A")
-    l3_lat=$( echo "$lat_out" | awk 'NR>3 && $1+0 > 512 && $1+0 <= 32768 {last=$2} END{print last" ns"}' 2>/dev/null || echo "N/A")
-    mem_lat=$(echo "$lat_out" | awk 'NR>3 && $1+0 > 32768               {last=$2} END{print last" ns"}' 2>/dev/null || echo "N/A")
+    printf "  %-32s %12s\n" "L1 Cache"      "$(mlc_lat 16K)"
+    printf "  %-32s %12s\n" "L2 Cache"      "$(mlc_lat 512K)"
+    printf "  %-32s %12s\n" "L3 Cache"      "$(mlc_lat 6M)"
+    printf "  %-32s %12s\n" "Memory (DRAM)" "$(mlc_lat 256M)"
 
-    printf "  %-32s %12s\n" "L1 Cache"  "$l1_lat"
-    printf "  %-32s %12s\n" "L2 Cache"  "$l2_lat"
-    printf "  %-32s %12s\n" "L3 Cache"  "$l3_lat"
-    printf "  %-32s %12s\n" "Memory (DRAM)"  "$mem_lat"
-
-    # Full loaded latency sweep table
     hdr "Full Idle Latency Sweep (Buffer Size → Latency)"
-    echo "$lat_out" | awk 'NR>2 && NF==2 {printf "  %10s KB   %s ns\n", $1, $2}'
+    for sz in 16K 64K 256K 1M 4M 16M 64M 256M; do
+        printf "  %12s   %s\n" "$sz" "$(mlc_lat $sz)"
+    done
 }
 
 # ── cleanup ─────────────────────────────────────────────────
@@ -179,6 +234,7 @@ echo -e "${RESET}"
 check_root
 require awk grep sed
 
+show_system_info
 show_cpu_info
 setup_mlc
 run_bandwidth
