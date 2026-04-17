@@ -11,6 +11,18 @@ An AIDA64-style cache and memory benchmark for Linux, powered by [Intel Memory L
 - Auto-downloads MLC at runtime (no manual install required)
 - Auto-converts bandwidth ≥ 100,000 MB/s to GB/s for readability
 
+## Quick Run
+
+```bash
+wget -qO- https://raw.githubusercontent.com/miozhu/linux-mlc-bench/main/mlc_benchmark.sh | sudo bash
+```
+
+Or with `curl`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/miozhu/linux-mlc-bench/main/mlc_benchmark.sh | sudo bash
+```
+
 ## Requirements
 
 | Tool | Notes |
