@@ -92,10 +92,11 @@ show_memory_info() {
     # Type + detail (from first populated DIMM)
     local mem_type
     mem_type=$(echo "$dmi_out" | awk '
-        /Memory Device/{in_dev=1; type=""; detail=""}
-        in_dev && /^\s+Type:/ && $2!="Unknown" && $2!="Other" {type=$2}
-        in_dev && /^\s+Type Detail:/{detail=substr($0,index($0,$3))}
-        in_dev && /^\s+Size:/ && $2+0>0 && type!="" {
+        /Memory Device/{in_dev=1; type=""; detail=""; has_size=0}
+        in_dev && /^[[:space:]]+Type:/ && $2!="Unknown" && $2!="Other" {type=$2}
+        in_dev && /^[[:space:]]+Type Detail:/{detail=substr($0,index($0,$3))}
+        in_dev && /^[[:space:]]+Size:/ && $2~/^[0-9]/ && $2+0>0 {has_size=1}
+        in_dev && has_size && type!="" && /^[[:space:]]+Speed:/ {
             if(detail!="") print type" ("detail")"
             else print type
             exit
@@ -108,15 +109,15 @@ show_memory_info() {
     mem_speed=$(echo "$dmi_out" | awk '/Configured Memory Speed:/{for(i=4;i<=NF;i++) printf "%s ",$i; print ""; exit}' | xargs)
     row "Configured Speed"     "${mem_speed:-N/A}"
 
-    # Native (rated) speed
+    # Rated speed (skip "Unknown" values)
     local mem_rated
-    mem_rated=$(echo "$dmi_out" | awk '/^\s+Speed:/{for(i=2;i<=NF;i++) printf "%s ",$i; print ""; exit}' | xargs)
+    mem_rated=$(echo "$dmi_out" | awk '/^[[:space:]]+Speed:/{if($2~/^[0-9]/) {for(i=2;i<=NF;i++) printf "%s ",$i; print ""; exit}}' | xargs)
     row "Rated Speed"          "${mem_rated:-N/A}"
 
     # DIMM count, size per DIMM, total slots
     local dimm_count dimm_size total_slots
-    dimm_count=$(echo "$dmi_out" | awk '/^\s+Size:/{if($2+0>0) count++} END{print count+0}')
-    dimm_size=$( echo "$dmi_out" | awk '/^\s+Size:/{if($2+0>0){print $2" "$3; exit}}')
+    dimm_count=$(echo "$dmi_out" | awk '/^[[:space:]]+Size:/{if($2~/^[0-9]/ && $2+0>0) count++} END{print count+0}')
+    dimm_size=$( echo "$dmi_out" | awk '/^[[:space:]]+Size:/{if($2~/^[0-9]/ && $2+0>0){print $2" "$3; exit}}')
     total_slots=$(echo "$dmi_out" | awk '/Number Of Devices:/{print $NF; exit}')
     row "DIMMs Installed"      "${dimm_count} x ${dimm_size} (${total_slots} slots total)"
 
@@ -136,9 +137,17 @@ show_memory_info() {
     row "ECC"                  "${ecc:-N/A}"
 
     # Memory channels in use (unique channel indices from Bank Locator field)
+    # Use POSIX awk (no 3-arg match) for mawk compatibility
     local channels
     channels=$(echo "$dmi_out" | awk '
-        /Bank Locator:/{match($0,/Channel([0-9]+)/,a); if(a[1]!="") ch[a[1]]=1}
+        /Bank Locator:/ {
+            s=$0
+            while (match(s,/Channel[0-9]+/)) {
+                key=substr(s,RSTART+7,RLENGTH-7)
+                ch[key]=1
+                s=substr(s,RSTART+RLENGTH)
+            }
+        }
         END{print length(ch)}
     ')
     row "Channels In Use"      "${channels:-N/A}"
@@ -176,8 +185,8 @@ show_system_info() {
     # Architecture / Virtualization
     local arch virt
     arch=$(uname -m)
-    virt=$(systemd-detect-virt 2>/dev/null || \
-           { grep -qi "hypervisor" /proc/cpuinfo && echo "hypervisor" || echo "none"; })
+    virt=$(systemd-detect-virt 2>/dev/null) || \
+        virt=$(grep -qi "hypervisor" /proc/cpuinfo && echo "hypervisor" || echo "none")
     row "Architecture"        "$arch"
     row "Virtualization"      "$virt"
 
@@ -188,8 +197,12 @@ show_system_info() {
 
     # NUMA topology
     local numa_nodes
-    numa_nodes=$(numactl --hardware 2>/dev/null | awk '/available:/{print $2}' || echo "N/A")
-    row "NUMA Nodes"          "$numa_nodes"
+    if command -v numactl &>/dev/null; then
+        numa_nodes=$(numactl --hardware 2>/dev/null | awk '/available:/{print $2}')
+    else
+        numa_nodes=$(ls /sys/devices/system/node/ 2>/dev/null | grep -c '^node[0-9]' || echo "N/A")
+    fi
+    row "NUMA Nodes"          "${numa_nodes:-N/A}"
 
     # Disk (root fs)
     local disk_info
