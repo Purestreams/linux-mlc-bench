@@ -298,12 +298,11 @@ run_bandwidth() {
     echo -e "  ${BOLD}$(printf '%-32s %12s %12s %12s' 'Level' 'Read' 'Write' 'Copy')${RESET}"
     echo    "  $(printf '%0.s─' {1..70})"
 
-    # MLC --bandwidth_matrix gives per-socket read BW
-    # MLC --peak_injection_bandwidth gives peak read/write/copy/triad
-    local bw_out
-    bw_out=$("$MLC_BIN" --peak_injection_bandwidth 2>/dev/null || true)
+    # Capture both stdout and stderr so we can show debug info on failure
+    local bw_out bw_err
+    bw_out=$("$MLC_BIN" --peak_injection_bandwidth 2>/tmp/mlc_bw_err || true)
+    bw_err=$(cat /tmp/mlc_bw_err 2>/dev/null || true)
 
-    # Peak memory BW (all-read, all-write, 1:1 r+w streams simulate Copy/Triad)
     # MLC v3.12 output lines: "ALL Reads", "All NT writes", "Stream-triad like"
     local mem_read mem_write mem_copy
     mem_read=$(  echo "$bw_out" | awk '/ALL Reads/{printf "%.0f MB/s", $NF}' 2>/dev/null || echo "N/A")
@@ -311,6 +310,16 @@ run_bandwidth() {
     mem_copy=$(  echo "$bw_out" | awk '/Stream-triad like/{printf "%.0f MB/s", $NF}' 2>/dev/null || echo "N/A")
 
     printf "  %-32s %12s %12s %12s\n" "Memory (DRAM)"  "$(fmt_bw "$mem_read")" "$(fmt_bw "$mem_write")" "$(fmt_bw "$mem_copy")"
+
+    # If all values are empty/N/A, show raw MLC output to help diagnose
+    if [[ -z "${mem_read//N\/A/}" ]] && [[ -z "${mem_write//N\/A/}" ]]; then
+        echo -e "\n${YELLOW}  [DEBUG] MLC bandwidth output (stdout):${RESET}"
+        echo "$bw_out" | sed 's/^/    /'
+        if [[ -n "$bw_err" ]]; then
+            echo -e "${YELLOW}  [DEBUG] MLC bandwidth output (stderr):${RESET}"
+            echo "$bw_err" | sed 's/^/    /'
+        fi
+    fi
 
     # Cache BW: use fixed per-thread buffer sizes that stay within each cache level.
     # L1: 16K  (L1d ≥ 32KB), L2: 512K (L2 ≥ 1MB per core), L3: detected_l3/4
@@ -320,14 +329,18 @@ run_bandwidth() {
     [[ "$l3_kb" -gt 0 ]] 2>/dev/null || l3_kb=8192
 
     for level_label in "L1 Cache:16K" "L2 Cache:512K" "L3 Cache:$((l3_kb/4))K"; do
-        local label buf_k bw_r bw_w bw_c cache_out
+        local label buf_k bw_r bw_w bw_c cache_out cache_err
         label="${level_label%%:*}"
         buf_k="${level_label##*:}"
-        cache_out=$("$MLC_BIN" --peak_injection_bandwidth -b"${buf_k}" 2>/dev/null || true)
+        cache_out=$("$MLC_BIN" --peak_injection_bandwidth -b"${buf_k}" 2>/tmp/mlc_cache_err || true)
+        cache_err=$(cat /tmp/mlc_cache_err 2>/dev/null || true)
         bw_r=$(echo "$cache_out" | awk '/ALL Reads/{printf "%.0f MB/s", $NF}')
         bw_w=$(echo "$cache_out" | awk '/All NT writes/{printf "%.0f MB/s", $NF}')
         bw_c=$(echo "$cache_out" | awk '/Stream-triad like/{printf "%.0f MB/s", $NF}')
         printf "  %-32s %12s %12s %12s\n" "$label" "$(fmt_bw "${bw_r:-N/A}")" "$(fmt_bw "${bw_w:-N/A}")" "$(fmt_bw "${bw_c:-N/A}")"
+        if [[ -z "$bw_r" && -n "$cache_err" ]]; then
+            echo -e "${YELLOW}  [DEBUG] $label stderr: $(echo "$cache_err" | head -3)${RESET}"
+        fi
     done
     printf "    *L1/L2/L3: Only the read bandwidth is meaningful for cache levels.\n"
 }
@@ -342,9 +355,23 @@ run_latency() {
     # Output is a NUMA latency matrix; extract the local-node value (first numeric row).
     # Falls back to parsing "Each iteration took X clocks ( Y ns)" format.
     mlc_lat() {
-        "$MLC_BIN" --idle_latency -b"$1" 2>/dev/null \
+        local lat_out lat_err
+        lat_out=$("$MLC_BIN" --idle_latency -b"$1" 2>/tmp/mlc_lat_err || true)
+        lat_err=$(cat /tmp/mlc_lat_err 2>/dev/null || true)
+        local result
+        result=$(echo "$lat_out" \
             | awk 'NF==2 && $1~/^[[:space:]]*[0-9]/ && $2+0>0 {printf "%.1f ns", $2; exit}
-                  /ns\)/{match($0,/[0-9]+\.[0-9]+[[:space:]]*ns/); if(RSTART){print substr($0,RSTART,RLENGTH); exit}}'
+                  /ns\)/{match($0,/[0-9]+\.[0-9]+[[:space:]]*ns/); if(RSTART){print substr($0,RSTART,RLENGTH); exit}}')
+        if [[ -z "$result" ]]; then
+            if [[ -n "$lat_err" ]]; then
+                echo -e "${YELLOW}  [DEBUG] idle_latency -b$1 stderr: $(echo "$lat_err" | head -2)${RESET}" >&2
+            elif [[ -n "$lat_out" ]]; then
+                echo -e "${YELLOW}  [DEBUG] idle_latency -b$1 stdout: $(echo "$lat_out" | tail -3)${RESET}" >&2
+            fi
+            echo "N/A"
+        else
+            echo "$result"
+        fi
     }
 
     printf "  %-32s %12s\n" "L1 Cache"      "$(mlc_lat 16K)"
