@@ -1,4 +1,18 @@
-# mlc_benchmark.sh
+<h1 align="center">mlc_benchmark.sh</h1>
+
+```
+  ╔══════════════════════════════════════════════════╗
+  ║                                                  ║
+  ║   ███╗   ███╗██╗      ██████╗                    ║
+  ║   ████╗ ████║██║     ██╔════╝                    ║
+  ║   ██╔████╔██║██║     ██║                         ║
+  ║   ██║╚██╔╝██║██║     ██║                         ║
+  ║   ██║ ╚═╝ ██║███████╗╚██████╗                    ║
+  ║   ╚═╝     ╚═╝╚══════╝ ╚═════╝  benchmark         ║
+  ║                                                  ║
+  ║      Cache & Memory Benchmark  (Intel MLC)       ║
+  ╚══════════════════════════════════════════════════╝
+```
 
 An AIDA64-like cache and memory benchmark for Linux, powered by [Intel Memory Latency Checker (MLC) v3.12](https://www.intel.com/content/www/us/en/developer/articles/tool/intelr-memory-latency-checker.html).
 
@@ -22,6 +36,7 @@ curl -fsSL https://raw.githubusercontent.com/Purestreams/linux-mlc-bench/master/
 
   ╔══════════════════════════════════════════════════╗
   ║     Cache & Memory Benchmark  (Intel MLC)        ║
+  ║                           By @Purestreams        ║                         
   ╚══════════════════════════════════════════════════╝
 
 
