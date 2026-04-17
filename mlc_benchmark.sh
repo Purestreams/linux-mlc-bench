@@ -154,17 +154,16 @@ show_memory_info() {
 
     # Per-DIMM topology table
     echo
-    printf "  %-12s %-10s %-12s %-30s %s\n" "Locator" "Size" "Speed" "Bank" "Manufacturer"
-    echo "  $(printf '%0.s─' {1..78})"
+    printf "  %-12s %-10s %-30s %s\n" "Locator" "Size" "Bank" "Manufacturer"
+    echo "  $(printf '%0.s─' {1..68})"
     echo "$dmi_out" | awk '
         /Memory Device/{loc=""; bank=""; size=""; speed=""; mfr=""}
         /^[[:space:]]+Locator:/ && !/Bank/{loc=$2}
         /^[[:space:]]+Bank Locator:/{bank=substr($0,index($0,$3))}
         /^[[:space:]]+Size:/{size=$2" "$3}
-        /Configured Memory Speed:/{speed=$4" "$5}
         /^[[:space:]]+Manufacturer:/{mfr=$2}
         /^[[:space:]]+Part Number:/ && loc!="" && size+0>0 {
-            printf "  %-12s %-10s %-12s %-30s %s\n", loc, size, speed, bank, mfr
+            printf "  %-12s %-10s %-30s %s\n", loc, size, bank, mfr
         }
     '
 }
