@@ -75,15 +75,89 @@ show_cpu_info() {
     l3=$(lscpu 2>/dev/null | awk '/^L3 cache/{$1=$2=""; gsub(/^[[:space:]]*/,""); print; exit}' || echo "?")
     row "L2 Cache"           "${l2}"
     row "L3 Cache"           "${l3}"
+}
 
-    # NUMA / Memory info
-    local mem_total mem_type mem_speed
+# ── memory information ───────────────────────────────────────
+show_memory_info() {
+    hdr "Memory Information"
+
+    local dmi_out
+    dmi_out=$(dmidecode -t memory 2>/dev/null || true)
+
+    # Total installed memory
+    local mem_total
     mem_total=$(awk '/MemTotal/{printf "%.1f GiB", $2/1024/1024}' /proc/meminfo)
-    mem_type=$(dmidecode -t memory 2>/dev/null | awk '/^\s+Type:/{print $2;exit}' || echo "N/A")
-    mem_speed=$(dmidecode -t memory 2>/dev/null | awk '/Speed:/{gsub(/[^0-9]/,"",$0); if($0+0>0){print $0" MT/s";exit}}' || echo "N/A")
-    row "Memory Total"       "$mem_total"
-    row "Memory Type"        "$mem_type"
-    row "Memory Speed"       "$mem_speed"
+    row "Memory Total"         "$mem_total"
+
+    # Type + detail (from first populated DIMM)
+    local mem_type
+    mem_type=$(echo "$dmi_out" | awk '
+        /Memory Device/{in_dev=1; type=""; detail=""}
+        in_dev && /^\s+Type:/ && $2!="Unknown" && $2!="Other" {type=$2}
+        in_dev && /^\s+Type Detail:/{detail=substr($0,index($0,$3))}
+        in_dev && /^\s+Size:/ && $2+0>0 && type!="" {
+            if(detail!="") print type" ("detail")"
+            else print type
+            exit
+        }
+    ')
+    row "Memory Type"          "${mem_type:-N/A}"
+
+    # Configured speed (first populated DIMM)
+    local mem_speed
+    mem_speed=$(echo "$dmi_out" | awk '/Configured Memory Speed:/{for(i=4;i<=NF;i++) printf "%s ",$i; print ""; exit}' | xargs)
+    row "Configured Speed"     "${mem_speed:-N/A}"
+
+    # Native (rated) speed
+    local mem_rated
+    mem_rated=$(echo "$dmi_out" | awk '/^\s+Speed:/{for(i=2;i<=NF;i++) printf "%s ",$i; print ""; exit}' | xargs)
+    row "Rated Speed"          "${mem_rated:-N/A}"
+
+    # DIMM count, size per DIMM, total slots
+    local dimm_count dimm_size total_slots
+    dimm_count=$(echo "$dmi_out" | awk '/^\s+Size:/{if($2+0>0) count++} END{print count+0}')
+    dimm_size=$( echo "$dmi_out" | awk '/^\s+Size:/{if($2+0>0){print $2" "$3; exit}}')
+    total_slots=$(echo "$dmi_out" | awk '/Number Of Devices:/{print $NF; exit}')
+    row "DIMMs Installed"      "${dimm_count} x ${dimm_size} (${total_slots} slots total)"
+
+    # Manufacturer
+    local mfr
+    mfr=$(echo "$dmi_out" | awk '/^\s+Manufacturer:/ && $2!="Unknown" && $2!="" {print $2; exit}')
+    row "Manufacturer"         "${mfr:-N/A}"
+
+    # Part number
+    local part
+    part=$(echo "$dmi_out" | awk '/^\s+Part Number:/{$1=$2=""; gsub(/^[[:space:]]*/,""); print; exit}' | xargs)
+    row "Part Number"          "${part:-N/A}"
+
+    # ECC
+    local ecc
+    ecc=$(echo "$dmi_out" | awk '/Error Correction Type:/{$1=$2=$3=""; gsub(/^[[:space:]]*/,""); print; exit}')
+    row "ECC"                  "${ecc:-N/A}"
+
+    # Memory channels in use (unique channel indices from Bank Locator field)
+    local channels
+    channels=$(echo "$dmi_out" | awk '
+        /Bank Locator:/{match($0,/Channel([0-9]+)/,a); if(a[1]!="") ch[a[1]]=1}
+        END{print length(ch)}
+    ')
+    row "Channels In Use"      "${channels:-N/A}"
+
+    # Per-DIMM topology table
+    echo
+    printf "  %-12s %-10s %-12s %-30s %s\n" "Locator" "Size" "Speed" "Bank" "Manufacturer"
+    echo "  $(printf '%0.s─' {1..78})"
+    echo "$dmi_out" | awk '
+        /Memory Device/{loc=""; bank=""; size=""; speed=""; mfr=""}
+        /^\s+Locator:/ && !/Bank/{loc=$2}
+        /^\s+Bank Locator:/{bank=substr($0,index($0,$3))}
+        /^\s+Size:/{size=$2" "$3}
+        /Configured Memory Speed:/{speed=$4" "$5}
+        /^\s+Manufacturer:/{mfr=$2}
+        /^\s+Part Number:/ && loc!="" && size+0>0 {
+            printf "  %-12s %-10s %-12s %-30s %s\n", loc, size, speed, bank, mfr
+        }
+    '
 }
 
 # ── system information ───────────────────────────────────────
@@ -183,12 +257,14 @@ run_bandwidth() {
     [[ "$l3_kb" -gt 0 ]] 2>/dev/null || l3_kb=8192
 
     for level_label in "L1 Cache:16K" "L2 Cache:512K" "L3 Cache:$((l3_kb/4))K"; do
-        local label buf_k bw_r
+        local label buf_k bw_r bw_w bw_c cache_out
         label="${level_label%%:*}"
         buf_k="${level_label##*:}"
-        bw_r=$("$MLC_BIN" --peak_injection_bandwidth -b"${buf_k}" 2>/dev/null \
-               | awk '/ALL Reads/{printf "%.0f MB/s", $NF}' || echo "N/A")
-        printf "  %-32s %12s %12s %12s\n" "$label"  "$(fmt_bw "$bw_r")" "N/A" "N/A"
+        cache_out=$("$MLC_BIN" --peak_injection_bandwidth -b"${buf_k}" 2>/dev/null || true)
+        bw_r=$(echo "$cache_out" | awk '/ALL Reads/{printf "%.0f MB/s", $NF}')
+        bw_w=$(echo "$cache_out" | awk '/All NT writes/{printf "%.0f MB/s", $NF}')
+        bw_c=$(echo "$cache_out" | awk '/Stream-triad like/{printf "%.0f MB/s", $NF}')
+        printf "  %-32s %12s %12s %12s\n" "$label" "$(fmt_bw "${bw_r:-N/A}")" "$(fmt_bw "${bw_w:-N/A}")" "$(fmt_bw "${bw_c:-N/A}")"
     done
 }
 
@@ -236,6 +312,7 @@ require awk grep sed
 
 show_system_info
 show_cpu_info
+show_memory_info
 setup_mlc
 run_bandwidth
 run_latency
