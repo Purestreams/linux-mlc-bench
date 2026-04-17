@@ -166,7 +166,7 @@ show_memory_info() {
 
     # Manufacturer
     local mfr
-    mfr=$(echo "$dmi_out" | awk '/^[[:space:]]+Manufacturer:/ && $2!="Unknown" && $2!="" {print $2; exit}')
+    mfr=$(echo "$dmi_out" | awk '/^[[:space:]]+Manufacturer:/ && $2!="" {print $2; exit}')
     row "Manufacturer"         "${mfr:-N/A}"
 
     # Part number
@@ -179,14 +179,20 @@ show_memory_info() {
     ecc=$(echo "$dmi_out" | awk '/Error Correction Type:/{$1=$2=$3=""; gsub(/^[[:space:]]*/,""); print; exit}')
     row "ECC"                  "${ecc:-N/A}"
 
-    # Memory channels in use (unique channel indices from Bank Locator field)
-    # Use POSIX awk (no 3-arg match) for mawk compatibility
+    # Memory channels in use — handle both "Channel0" and "CHANNEL A" style Bank Locator fields
     local channels
     channels=$(echo "$dmi_out" | awk '
         /Bank Locator:/ {
             s=$0
-            while (match(s,/Channel[0-9]+/)) {
+            # Style 1: Channel0, Channel1, ... (e.g. P0_Node0_Channel0_Dimm0)
+            while (match(s,/[Cc]hannel[0-9]+/)) {
                 key=substr(s,RSTART+7,RLENGTH-7)
+                ch[key]=1
+                s=substr(s,RSTART+RLENGTH)
+            }
+            # Style 2: CHANNEL A, CHANNEL B, ... (e.g. P0 CHANNEL A)
+            while (match(s,/[Cc]HANNEL[[:space:]]+[A-Za-z]/)) {
+                key=substr(s,RSTART,RLENGTH)
                 ch[key]=1
                 s=substr(s,RSTART+RLENGTH)
             }
