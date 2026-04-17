@@ -1,4 +1,4 @@
-<h1 align="center">mlc_benchmark.sh</h1>
+<h1 align="center">mlc_benchmark</h1>
 
 ```
   ╔══════════════════════════════════════════════════╗
@@ -14,11 +14,12 @@
   ╚══════════════════════════════════════════════════╝
 ```
 
-An AIDA64-like cache and memory benchmark for Linux, powered by [Intel Memory Latency Checker (MLC) v3.12](https://www.intel.com/content/www/us/en/developer/articles/tool/intelr-memory-latency-checker.html).
+An AIDA64-like cache and memory benchmark for **Linux and Windows**, powered by [Intel Memory Latency Checker (MLC) v3.12](https://www.intel.com/content/www/us/en/developer/articles/tool/intelr-memory-latency-checker.html).
 
 
 ## Quick Run
 
+### Linux
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Purestreams/linux-mlc-bench/master/mlc_benchmark.sh | sudo bash
@@ -30,13 +31,23 @@ without sudo:
 curl -fsSL https://raw.githubusercontent.com/Purestreams/linux-mlc-bench/master/mlc_benchmark.sh | bash
 ```
 
+### Windows (PowerShell)
+
+Run as Administrator for full MLC access:
+
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+Invoke-WebRequest -Uri https://raw.githubusercontent.com/Purestreams/linux-mlc-bench/master/mlc_benchmark.ps1 -OutFile mlc_benchmark.ps1
+.\mlc_benchmark.ps1
+```
+
 ## Example
 
 ```
 
   ╔══════════════════════════════════════════════════╗
   ║     Cache & Memory Benchmark  (Intel MLC)        ║
-  ║                           By @Purestreams        ║                         
+  ║                           By @Purestreams        ║
   ╚══════════════════════════════════════════════════╝
 
 
@@ -46,7 +57,7 @@ curl -fsSL https://raw.githubusercontent.com/Purestreams/linux-mlc-bench/master/
   Kernel                         6.8.12-15-pve
   Architecture                   x86_64
   Virtualization                 none
-  Uptime                         up 5 weeks, 6 days, 19 hours, 17 minutes
+  Uptime                         up 5 weeks, 6 days, 21 hours, 5 minutes
   NUMA Nodes                     1
   Root Disk                      94G total, 59G used, 31G avail
   CPU Freq Governor              performance
@@ -84,33 +95,34 @@ curl -fsSL https://raw.githubusercontent.com/Purestreams/linux-mlc-bench/master/
 
 ━━━  Setting Up Intel MLC  ━━━
   Downloading MLC from Intel...
-  MLC ready: /tmp/mlc_bench_2437540/Linux/mlc
+  MLC ready: /tmp/mlc_bench_2470333/Linux/mlc
 
 ━━━  Memory & Cache Bandwidth  ━━━
   Level                                    Read        Write         Copy
   ──────────────────────────────────────────────────────────────────────
-  Memory (DRAM)                      133.0 GB/s   127.8 GB/s   128.7 GB/s
-  L1 Cache                          2804.2 GB/s   126.6 GB/s   376.6 GB/s
-  L2 Cache                          1818.7 GB/s   123.9 GB/s   368.7 GB/s
-  L3 Cache                           133.2 GB/s   126.6 GB/s   128.3 GB/s
+  Memory (DRAM)                      132.3 GB/s   124.9 GB/s   128.1 GB/s
+  L1 Cache                          2795.4 GB/s   126.5 GB/s   352.7 GB/s
+  L2 Cache                          1819.6 GB/s   121.3 GB/s   368.5 GB/s
+  L3 Cache                           131.6 GB/s   125.3 GB/s   127.7 GB/s
+    *L1/L2/L3: Only the read bandwidth is meaningful for cache levels.
 
 ━━━  Memory & Cache Latency  ━━━
   Level                                 Latency
   ──────────────────────────────────────────────
   L1 Cache                               1.2    ns
-  L2 Cache                               7.6    ns
-  L3 Cache                              13.5    ns
-  Memory (DRAM)                        131.5    ns
+  L2 Cache                               6.6    ns
+  L3 Cache                              13.4    ns
+  Memory (DRAM)                        130.9    ns
 
 ━━━  Full Idle Latency Sweep (Buffer Size → Latency)  ━━━
            16K   1.2    ns
            64K   3.7    ns
-          256K   4.5    ns
-            1M   12.4   ns
+          256K   4.1    ns
+            1M   12.6   ns
             4M   13.3   ns
-           16M   76.4   ns
-           64M   129.4  ns
-          256M   131.2  ns
+           16M   74.7   ns
+           64M   129.5  ns
+          256M   131.6  ns
 
 ━━━  Done  ━━━
   Elapsed time: 3m 14s
@@ -119,14 +131,18 @@ curl -fsSL https://raw.githubusercontent.com/Purestreams/linux-mlc-bench/master/
 
 ## Features
 
-- **System Information** — OS, kernel, virtualization, uptime, disk, network interfaces, CPU frequency governor
-- **CPU Information** — model, core/thread count, frequency, cache sizes, memory type and speed
+- **System Information** — OS, kernel, virtualization, uptime, disk, CPU frequency governor / power plan
+- **CPU Information** — model, core/thread count, frequency, cache sizes
+- **Memory Information** — type, speed, DIMM count/size, manufacturer, ECC, channel topology
 - **Cache & Memory Bandwidth** — read, write, and copy throughput for DRAM, L1, L2, and L3 cache
 - **Cache & Memory Latency** — idle latency for L1/L2/L3/DRAM, plus a full buffer-size sweep table
 - Auto-downloads MLC at runtime (no manual install required)
 - Auto-converts bandwidth ≥ 100,000 MB/s to GB/s for readability
+- **Linux** (`mlc_benchmark.sh`) and **Windows** (`mlc_benchmark.ps1`) support
 
 ## Requirements
+
+### Linux (`mlc_benchmark.sh`)
 
 | Tool | Notes |
 |------|-------|
@@ -140,11 +156,20 @@ Optional (auto-installed if running as root on supported distros):
 - `dmidecode` — memory type, speed, and DIMM topology
 - `numactl` — NUMA node count
 - `systemd-detect-virt` — virtualization detection (via `systemd`)
-- `lscpu` — cache sizes (via `util-linux`)
 
 Supported package managers for auto-install: `apt`, `dnf`, `yum`, `pacman`, `zypper`, `apk`
 
+### Windows (`mlc_benchmark.ps1`)
+
+| Requirement | Notes |
+|-------------|-------|
+| Windows 10 1803+ / Windows 11 | `tar.exe` required for extraction |
+| PowerShell 5.1+ | Built into Windows |
+| Administrator (recommended) | Required for full MLC access |
+
 ## Usage
+
+### Linux
 
 ```bash
 # Basic run (some MLC tests may be restricted without root)
@@ -152,6 +177,16 @@ bash mlc_benchmark.sh
 
 # Recommended: run as root for full results
 sudo bash mlc_benchmark.sh
+```
+
+### Windows
+
+```powershell
+# Run directly (Administrator recommended)
+.\mlc_benchmark.ps1
+
+# Or elevate automatically
+Start-Process powershell -Verb RunAs -ArgumentList "-File `"$PWD\mlc_benchmark.ps1`""
 ```
 
 
