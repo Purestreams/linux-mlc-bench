@@ -307,11 +307,35 @@ setup_mlc() {
     local tgz="$WORKDIR/mlc.tgz"
 
     if [[ ! -f "$tgz" ]]; then
-        echo "  Downloading MLC from Intel..."
-        if command -v curl &>/dev/null; then
-            curl -fsSL --retry 3 -o "$tgz" "$MLC_URL"
+        # Allow pre-downloaded tarball via MLC_TGZ env var
+        if [[ -n "${MLC_TGZ:-}" && -f "$MLC_TGZ" ]]; then
+            echo "  Using local MLC archive: $MLC_TGZ"
+            cp "$MLC_TGZ" "$tgz"
         else
-            wget -q --tries=3 -O "$tgz" "$MLC_URL"
+            echo "  Downloading MLC from Intel..."
+            local dl_ok=0
+            if command -v curl &>/dev/null; then
+                curl -fsSL --retry 3 --http1.1 -o "$tgz" "$MLC_URL" && dl_ok=1
+                if [[ $dl_ok -eq 0 ]]; then
+                    echo -e "${YELLOW}  SSL error — trying to update CA certificates...${RESET}"
+                    if [[ $EUID -eq 0 ]]; then
+                        _pkg_install ca-certificates >/dev/null 2>&1 || true
+                        update-ca-certificates >/dev/null 2>&1 || true
+                        curl -fsSL --retry 3 --http1.1 -o "$tgz" "$MLC_URL" && dl_ok=1
+                    fi
+                fi
+                if [[ $dl_ok -eq 0 ]]; then
+                    echo -e "${YELLOW}  Retrying without SSL verification...${RESET}"
+                    curl -fsSL --retry 3 --insecure -o "$tgz" "$MLC_URL" && dl_ok=1
+                fi
+            else
+                wget -q --tries=3 -O "$tgz" "$MLC_URL" && dl_ok=1
+                if [[ $dl_ok -eq 0 ]]; then
+                    echo -e "${YELLOW}  Retrying without SSL verification...${RESET}"
+                    wget -q --tries=3 --no-check-certificate -O "$tgz" "$MLC_URL" && dl_ok=1
+                fi
+            fi
+            [[ $dl_ok -eq 1 ]] || die "Failed to download MLC. Try: MLC_TGZ=/path/to/mlc_v3.12.tgz bash $0"
         fi
     fi
 
