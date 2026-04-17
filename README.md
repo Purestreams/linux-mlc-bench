@@ -15,13 +15,13 @@ An AIDA64-style cache and memory benchmark for Linux, powered by [Intel Memory L
 
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Purestreams/linux-mlc-bench/main/mlc_benchmark.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/Purestreams/linux-mlc-bench/master/mlc_benchmark.sh | sudo bash
 ```
 
 without sudo:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Purestreams/linux-mlc-bench/main/mlc_benchmark.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Purestreams/linux-mlc-bench/master/mlc_benchmark.sh | bash
 ```
 
 ## Requirements
