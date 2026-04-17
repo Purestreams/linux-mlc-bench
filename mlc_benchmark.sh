@@ -367,6 +367,7 @@ trap cleanup EXIT
 echo -e "${GREEN}${BOLD}"
 echo "  ╔══════════════════════════════════════════════════╗"
 echo "  ║     Cache & Memory Benchmark  (Intel MLC)        ║"
+echo "  ║                           By @Purestreams        ║"
 echo "  ╚══════════════════════════════════════════════════╝"
 echo -e "${RESET}"
 
