@@ -185,8 +185,13 @@ show_system_info() {
     # Architecture / Virtualization
     local arch virt
     arch=$(uname -m)
-    virt=$(systemd-detect-virt 2>/dev/null) || \
-        virt=$(grep -qi "hypervisor" /proc/cpuinfo && echo "hypervisor" || echo "none")
+    if command -v systemd-detect-virt &>/dev/null; then
+        virt=$(systemd-detect-virt 2>/dev/null; true)
+    elif grep -qi "hypervisor" /proc/cpuinfo 2>/dev/null; then
+        virt="hypervisor"
+    else
+        virt="none"
+    fi
     row "Architecture"        "$arch"
     row "Virtualization"      "$virt"
 
