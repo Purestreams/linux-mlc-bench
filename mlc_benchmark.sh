@@ -329,6 +329,7 @@ run_bandwidth() {
         bw_c=$(echo "$cache_out" | awk '/Stream-triad like/{printf "%.0f MB/s", $NF}')
         printf "  %-32s %12s %12s %12s\n" "$label" "$(fmt_bw "${bw_r:-N/A}")" "$(fmt_bw "${bw_w:-N/A}")" "$(fmt_bw "${bw_c:-N/A}")"
     done
+    printf "    *L1/L2/L3: Only the read bandwidth is meaningful for cache levels.\n"
 }
 
 # ── latency tests ────────────────────────────────────────────
