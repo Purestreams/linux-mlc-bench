@@ -123,12 +123,12 @@ show_memory_info() {
 
     # Manufacturer
     local mfr
-    mfr=$(echo "$dmi_out" | awk '/^\s+Manufacturer:/ && $2!="Unknown" && $2!="" {print $2; exit}')
+    mfr=$(echo "$dmi_out" | awk '/^[[:space:]]+Manufacturer:/ && $2!="Unknown" && $2!="" {print $2; exit}')
     row "Manufacturer"         "${mfr:-N/A}"
 
     # Part number
     local part
-    part=$(echo "$dmi_out" | awk '/^\s+Part Number:/{$1=$2=""; gsub(/^[[:space:]]*/,""); print; exit}' | xargs)
+    part=$(echo "$dmi_out" | awk '/^[[:space:]]+Part Number:/{$1=$2=""; gsub(/^[[:space:]]*/,""); print; exit}' | xargs)
     row "Part Number"          "${part:-N/A}"
 
     # ECC
@@ -158,12 +158,12 @@ show_memory_info() {
     echo "  $(printf '%0.s─' {1..78})"
     echo "$dmi_out" | awk '
         /Memory Device/{loc=""; bank=""; size=""; speed=""; mfr=""}
-        /^\s+Locator:/ && !/Bank/{loc=$2}
-        /^\s+Bank Locator:/{bank=substr($0,index($0,$3))}
-        /^\s+Size:/{size=$2" "$3}
+        /^[[:space:]]+Locator:/ && !/Bank/{loc=$2}
+        /^[[:space:]]+Bank Locator:/{bank=substr($0,index($0,$3))}
+        /^[[:space:]]+Size:/{size=$2" "$3}
         /Configured Memory Speed:/{speed=$4" "$5}
-        /^\s+Manufacturer:/{mfr=$2}
-        /^\s+Part Number:/ && loc!="" && size+0>0 {
+        /^[[:space:]]+Manufacturer:/{mfr=$2}
+        /^[[:space:]]+Part Number:/ && loc!="" && size+0>0 {
             printf "  %-12s %-10s %-12s %-30s %s\n", loc, size, speed, bank, mfr
         }
     '
@@ -328,6 +328,8 @@ echo -e "${RESET}"
 check_root
 require awk grep sed
 
+START_TIME=$(date +%s)
+
 show_system_info
 show_cpu_info
 show_memory_info
@@ -336,4 +338,7 @@ run_bandwidth
 run_latency
 
 hdr "Done"
+END_TIME=$(date +%s)
+ELAPSED=$(( END_TIME - START_TIME ))
+printf "  Elapsed time: %dm %02ds\n" $((ELAPSED/60)) $((ELAPSED%60))
 echo -e "  ${GREEN}Benchmark complete.${RESET}"
