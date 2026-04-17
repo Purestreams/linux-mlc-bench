@@ -270,6 +270,30 @@ show_system_info() {
     fi
 }
 
+# ── hugepages setup ─────────────────────────────────────────
+HUGEPAGES_ORIG=""
+setup_hugepages() {
+    local hp_file="/proc/sys/vm/nr_hugepages"
+    [[ -f "$hp_file" ]] || return 0
+    HUGEPAGES_ORIG=$(cat "$hp_file")
+    local needed=4000
+    if [[ "$HUGEPAGES_ORIG" -lt "$needed" ]] 2>/dev/null; then
+        if [[ $EUID -eq 0 ]]; then
+            echo "  Allocating hugepages for MLC ($needed pages)..."
+            echo "$needed" > "$hp_file" || true
+        else
+            echo -e "${YELLOW}  Warning: hugepages not allocated (need root). MLC results may be inaccurate.${RESET}"
+            echo -e "${YELLOW}  Fix: sudo bash -c 'echo 4000 > /proc/sys/vm/nr_hugepages'${RESET}"
+        fi
+    fi
+}
+restore_hugepages() {
+    local hp_file="/proc/sys/vm/nr_hugepages"
+    if [[ -n "$HUGEPAGES_ORIG" && -f "$hp_file" && $EUID -eq 0 ]]; then
+        echo "$HUGEPAGES_ORIG" > "$hp_file" 2>/dev/null || true
+    fi
+}
+
 # ── download + extract MLC ──────────────────────────────────
 setup_mlc() {
     hdr "Setting Up Intel MLC"
@@ -290,6 +314,7 @@ setup_mlc() {
     [[ -n "$MLC_BIN" ]] || die "mlc binary not found after extraction."
     chmod +x "$MLC_BIN"
     echo "  MLC ready: $MLC_BIN"
+    setup_hugepages
 }
 
 # ── bandwidth tests ─────────────────────────────────────────
@@ -387,6 +412,7 @@ run_latency() {
 
 # ── cleanup ─────────────────────────────────────────────────
 cleanup() {
+    restore_hugepages
     rm -rf "$WORKDIR"
 }
 trap cleanup EXIT
