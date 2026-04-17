@@ -121,10 +121,13 @@ curl -fsSL https://raw.githubusercontent.com/Purestreams/linux-mlc-bench/master/
 | `lscpu` | Part of `util-linux` |
 | `sudo` / root | Required for full MLC access (MSR prefetcher control) |
 
-Optional (improves output quality):
-- `dmidecode` — memory type and speed detection
+Optional (auto-installed if running as root on supported distros):
+- `dmidecode` — memory type, speed, and DIMM topology
 - `numactl` — NUMA node count
-- `systemd-detect-virt` — virtualization detection
+- `systemd-detect-virt` — virtualization detection (via `systemd`)
+- `lscpu` — cache sizes (via `util-linux`)
+
+Supported package managers for auto-install: `apt`, `dnf`, `yum`, `pacman`, `zypper`, `apk`
 
 ## Usage
 

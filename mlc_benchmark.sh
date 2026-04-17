@@ -35,7 +35,49 @@ require() {
     done
 }
 
-# ── check privileges (MLC needs root for some tests) ───────
+# ── detect package manager ──────────────────────────────────
+_pkg_install() {
+    local pkg="$1"
+    if command -v apt-get &>/dev/null; then
+        apt-get install -y -qq "$pkg" >/dev/null 2>&1
+    elif command -v dnf &>/dev/null; then
+        dnf install -y -q "$pkg" >/dev/null 2>&1
+    elif command -v yum &>/dev/null; then
+        yum install -y -q "$pkg" >/dev/null 2>&1
+    elif command -v pacman &>/dev/null; then
+        pacman -Sq --noconfirm "$pkg" >/dev/null 2>&1
+    elif command -v zypper &>/dev/null; then
+        zypper install -y -q "$pkg" >/dev/null 2>&1
+    elif command -v apk &>/dev/null; then
+        apk add -q "$pkg" >/dev/null 2>&1
+    else
+        return 1
+    fi
+}
+
+# Try to install optional tools if root; silently skip if unavailable
+ensure_optional() {
+    # cmd:package pairs (package name may differ per distro but usually matches)
+    local pairs=(
+        "dmidecode:dmidecode"
+        "numactl:numactl"
+        "systemd-detect-virt:systemd"
+        "lscpu:util-linux"
+    )
+    if [[ $EUID -ne 0 ]]; then return; fi
+    for pair in "${pairs[@]}"; do
+        local cmd="${pair%%:*}" pkg="${pair##*:}"
+        if ! command -v "$cmd" &>/dev/null; then
+            printf "  Installing %s..." "$pkg"
+            if _pkg_install "$pkg" && command -v "$cmd" &>/dev/null; then
+                echo " done"
+            else
+                echo " skipped (not found in repos)"
+            fi
+        fi
+    done
+}
+
 check_root() {
     if [[ $EUID -ne 0 ]]; then
         echo -e "${YELLOW}Warning: running without root. Some MLC tests may be restricted.${RESET}"
@@ -330,6 +372,7 @@ echo -e "${RESET}"
 
 check_root
 require awk grep sed
+ensure_optional
 
 START_TIME=$(date +%s)
 
