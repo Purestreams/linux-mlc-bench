@@ -14,26 +14,26 @@ An AIDA64-style cache and memory benchmark for Linux, powered by [Intel Memory L
 ## Quick Run
 
 ```bash
-wget -qO- https://raw.githubusercontent.com/miozhu/linux-mlc-bench/main/mlc_benchmark.sh | sudo bash
+wget -qO- https://raw.githubusercontent.com/Purestreams/linux-mlc-bench/main/mlc_benchmark.sh | sudo bash
 ```
 
 without sudo:
 
 ```bash
-wget -qO- https://raw.githubusercontent.com/miozhu/linux-mlc-bench/main/mlc_benchmark.sh | bash
+wget -qO- https://raw.githubusercontent.com/Purestreams/linux-mlc-bench/main/mlc_benchmark.sh | bash
 ```
 
 
 Or with `curl`:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/miozhu/linux-mlc-bench/main/mlc_benchmark.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/Purestreams/linux-mlc-bench/main/mlc_benchmark.sh | sudo bash
 ```
 
 without sudo:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/miozhu/linux-mlc-bench/main/mlc_benchmark.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Purestreams/linux-mlc-bench/main/mlc_benchmark.sh | bash
 ```
 
 ## Requirements
