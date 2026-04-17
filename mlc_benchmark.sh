@@ -7,6 +7,7 @@ set -euo pipefail
 
 MLC_URL="https://downloadmirror.intel.com/866182/mlc_v3.12.tgz"
 WORKDIR="${TMPDIR:-/tmp}/mlc_bench_$$"
+VIRT="unknown"   # set by show_system_info, used by other sections
 BOLD="\033[1m"
 CYAN="\033[1;36m"
 GREEN="\033[1;32m"
@@ -191,6 +192,7 @@ show_system_info() {
     else
         virt="none"
     fi
+    VIRT="$virt"
     row "Architecture"        "$arch"
     row "Virtualization"      "$virt"
 
@@ -214,14 +216,16 @@ show_system_info() {
     row "Root Disk"           "$disk_info"
 
     # Network interfaces (non-loopback)
-    local ifaces
-    ifaces=$(ip -o link show 2>/dev/null | awk -F': ' '!/loopback/{gsub(/@.*/,"",$2); printf "%s ", $2}' | sed 's/ $//' || echo "N/A")
-    row "Network Interfaces"  "$ifaces"
+    #local ifaces
+    #ifaces=$(ip -o link show 2>/dev/null | awk -F': ' '!/loopback/{gsub(/@.*/,"",$2); printf "%s ", $2}' | sed 's/ $//' || echo "N/A")
+    #row "Network Interfaces"  "$ifaces"
 
-    # Scaling governor
-    local governor
-    governor=$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor 2>/dev/null || echo "N/A")
-    row "CPU Freq Governor"   "$governor"
+    # Scaling governor (skip in VMs — usually not controllable)
+    if [[ "$VIRT" == "none" ]]; then
+        local governor
+        governor=$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor 2>/dev/null || echo "N/A")
+        row "CPU Freq Governor"   "$governor"
+    fi
 }
 
 # ── download + extract MLC ──────────────────────────────────
@@ -331,7 +335,7 @@ START_TIME=$(date +%s)
 
 show_system_info
 show_cpu_info
-show_memory_info
+[[ "$VIRT" == "none" ]] && show_memory_info || echo -e "\n${YELLOW}  (Memory Information skipped — running inside VM: $VIRT)${RESET}"
 setup_mlc
 run_bandwidth
 run_latency
