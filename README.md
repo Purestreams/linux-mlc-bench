@@ -14,7 +14,7 @@
   ╚══════════════════════════════════════════════════╝
 ```
 
-An AIDA64-like cache and memory benchmark for **Linux and Windows**, powered by [Intel Memory Latency Checker (MLC) v3.12](https://www.intel.com/content/www/us/en/developer/articles/tool/intelr-memory-latency-checker.html).
+An AIDA64-like cache and memory benchmark for **Linux and Windows**, powered by [Intel Memory Latency Checker (MLC) v3.13](https://www.intel.com/content/www/us/en/developer/articles/tool/intelr-memory-latency-checker.html).
 
 
 ## Quick Run

@@ -5,7 +5,7 @@
 # ============================================================
 set -euo pipefail
 
-MLC_URL="https://downloadmirror.intel.com/866182/mlc_v3.12.tgz"
+MLC_URL="https://downloadmirror.intel.com/926327/mlc_v3.13.tgz"
 WORKDIR="${TMPDIR:-/tmp}/mlc_bench_$$"
 VIRT="unknown"   # set by show_system_info, used by other sections
 BOLD="\033[1m"

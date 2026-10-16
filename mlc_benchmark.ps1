@@ -5,7 +5,7 @@
 #  Run as Administrator for full MLC access (MSR prefetcher control)
 # ============================================================
 
-$MLC_URL  = "https://downloadmirror.intel.com/866182/mlc_v3.12.tgz"
+$MLC_URL  = "https://downloadmirror.intel.com/926327/mlc_v3.13.tgz"
 $WORKDIR  = Join-Path $env:TEMP "mlc_bench_$PID"
 $MLC_BIN  = ""
 $START_TIME = Get-Date
